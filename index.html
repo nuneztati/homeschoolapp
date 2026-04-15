@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Homeschool Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-top">
+      <p class="eyebrow">Community Directory</p>
+      <div id="user-bar" class="user-bar" hidden>
+        <span id="welcome"></span>
+        <a class="top-tab ghost link-button" href="dashboard.html">Dashboard</a>
+        <button id="logout" class="top-tab ghost" type="button">Log Out</button>
+      </div>
+    </div>
+    <h1>Homeschool Hub</h1>
+    <p class="hero-copy">A shared place where families can post classes, discover learning groups, and coordinate local homeschool experiences.</p>
+    <div class="hero-stats">
+      <article>
+        <strong id="stat-count">0</strong>
+        <span>Classes Posted</span>
+      </article>
+      <article>
+        <strong id="stat-subjects">0</strong>
+        <span>Subjects Active</span>
+      </article>
+      <article>
+        <strong id="stat-modes">0</strong>
+        <span>Formats Available</span>
+      </article>
+    </div>
+  </header>
+
+  <main id="app" class="layout">
+    <section class="panel panel-feed panel-focus">
+      <div class="feed-head">
+        <h2>Current Classes Available</h2>
+        <button id="clear-all" class="ghost" type="button">Clear All</button>
+      </div>
+
+      <form id="filter-form" class="filters">
+        <label>Search
+          <input id="search" name="search" placeholder="Title, location, description" />
+        </label>
+        <label>Subject
+          <select id="filter-subject" name="subject">
+            <option value="">All</option>
+            <option>STEM</option>
+            <option>Language Arts</option>
+            <option>History</option>
+            <option>Art</option>
+            <option>Life Skills</option>
+            <option>Faith Studies</option>
+            <option>Physical Education</option>
+            <option>Other</option>
+          </select>
+        </label>
+        <label>Format
+          <select id="filter-mode" name="mode">
+            <option value="">All</option>
+            <option>In Person</option>
+            <option>Online</option>
+            <option>Hybrid</option>
+          </select>
+        </label>
+        <label>Max Cost
+          <input id="max-cost" name="maxCost" type="number" min="0" placeholder="Any" />
+        </label>
+        <label>Sort
+          <select id="sort" name="sort">
+            <option value="newest">Newest</option>
+            <option value="lowCost">Lowest Cost</option>
+            <option value="highSeats">Most Seats</option>
+          </select>
+        </label>
+      </form>
+
+      <ul id="class-list" class="class-list"></ul>
+      <p id="empty" class="empty" hidden>No classes match these filters yet.</p>
+    </section>
+
+    <aside class="side-column">
+      <section id="auth-gate" class="auth-gate">
+        <article class="panel auth-panel">
+          <h2>Create an Account</h2>
+          <form id="signup-form" class="grid-form auth-form">
+            <label>Display Name
+              <input name="username" required maxlength="40" placeholder="Alicia Smith" />
+            </label>
+            <label>Email
+              <input name="email" type="email" required placeholder="you@example.com" />
+            </label>
+            <label>Password
+              <input name="password" type="password" minlength="6" required placeholder="At least 6 characters" />
+            </label>
+            <button type="submit">Sign Up</button>
+          </form>
+          <p id="signup-msg" class="form-msg" aria-live="polite"></p>
+        </article>
+
+        <article class="panel auth-panel">
+          <h2>Log In</h2>
+          <form id="login-form" class="grid-form auth-form">
+            <label>Email
+              <input name="email" type="email" required placeholder="you@example.com" />
+            </label>
+            <label>Password
+              <input name="password" type="password" required placeholder="Your password" />
+            </label>
+            <button type="submit">Log In</button>
+          </form>
+          <p id="login-msg" class="form-msg" aria-live="polite"></p>
+        </article>
+      </section>
+
+      <section class="panel panel-post">
+      <h2>Post a Class</h2>
+      <p id="auth-hint" class="form-msg">Log in, then use Dashboard to manage classes and schedules.</p>
+      <form id="class-form" class="grid-form">
+        <label>Class Title
+          <input name="title" required maxlength="80" placeholder="Nature Journaling Club" />
+        </label>
+        <label>Subject
+          <select name="subject" required>
+            <option value="">Choose one</option>
+            <option>STEM</option>
+            <option>Language Arts</option>
+            <option>History</option>
+            <option>Art</option>
+            <option>Life Skills</option>
+            <option>Faith Studies</option>
+            <option>Physical Education</option>
+            <option>Other</option>
+          </select>
+        </label>
+        <label>Age Range
+          <input name="ageRange" required placeholder="8-11" />
+        </label>
+        <label>Day / Time
+          <input name="schedule" required placeholder="Tuesdays 10:00 AM" />
+        </label>
+        <label>Program Length
+          <input name="duration" required placeholder="6-week program or Summer program" />
+        </label>
+        <label>Format
+          <select name="mode" required>
+            <option value="">Choose one</option>
+            <option>In Person</option>
+            <option>Online</option>
+            <option>Hybrid</option>
+          </select>
+        </label>
+        <label>Location
+          <input name="location" required placeholder="Cedar Grove Library" />
+        </label>
+        <label>Cost (USD)
+          <input name="cost" type="number" min="0" step="1" placeholder="0" />
+        </label>
+        <label class="check-line">
+          <input name="allowDiscounts" type="checkbox" />
+          Allow discount-based registration requests
+        </label>
+        <label>Discount Spots
+          <input name="discountSpots" type="number" min="0" step="1" placeholder="0" />
+        </label>
+        <label class="check-line">
+          <input name="allowCompensation" type="checkbox" />
+          Allow compensated registration (volunteering/carpooling)
+        </label>
+        <label>Compensation Spots
+          <input name="compensationSpots" type="number" min="0" step="1" placeholder="0" />
+        </label>
+        <label>Minimum Required
+          <input name="minRequired" type="number" min="3" required placeholder="5" />
+        </label>
+        <label>Maximum Seats
+          <input name="maxSeats" type="number" min="3" required placeholder="12" />
+        </label>
+        <label class="full">Compensation Examples (comma-separated)
+          <input name="compensationExamples" placeholder="carpool support, classroom setup help, cleanup volunteer shifts" />
+        </label>
+        <label class="full">Registration Notes
+          <textarea name="registrationNotes" maxlength="240" placeholder="Optional policy details for discounts or compensated registration."></textarea>
+        </label>
+        <label class="full">Class Description
+          <textarea name="description" required maxlength="400" placeholder="What students will do, materials needed, and what makes this class useful."></textarea>
+        </label>
+        <label class="full">Tags (comma-separated)
+          <input name="tags" placeholder="outdoors, beginner friendly, project based" />
+        </label>
+        <button type="submit">Publish Class</button>
+      </form>
+      </section>
+    </aside>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Homeschool Hub Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-top">
+      <p class="eyebrow">Account Workspace</p>
+      <div class="user-bar">
+        <span id="welcome"></span>
+        <a class="top-tab ghost link-button" href="index.html">Class Feed</a>
+        <button id="logout" class="top-tab ghost" type="button">Log Out</button>
+      </div>
+    </div>
+    <h1>Dashboard</h1>
+    <p class="hero-copy">Manage the classes you create and organize each child's active schedule.</p>
+  </header>
+
+  <main class="layout">
+    <section class="panel">
+      <h2>Create a Class</h2>
+      <p id="auth-hint" class="form-msg"></p>
+      <form id="class-form" class="grid-form">
+        <label>Class Title
+          <input name="title" required maxlength="80" />
+        </label>
+        <label>Subject
+          <select name="subject" required>
+            <option value="">Choose one</option>
+            <option>STEM</option>
+            <option>Language Arts</option>
+            <option>History</option>
+            <option>Art</option>
+            <option>Life Skills</option>
+            <option>Faith Studies</option>
+            <option>Physical Education</option>
+            <option>Other</option>
+          </select>
+        </label>
+        <label>Age Range
+          <input name="ageRange" required />
+        </label>
+        <label>Day / Time
+          <input name="schedule" required />
+        </label>
+        <label>Program Length
+          <input name="duration" required placeholder="6-week program or Summer program" />
+        </label>
+        <label>Format
+          <select name="mode" required>
+            <option value="">Choose one</option>
+            <option>In Person</option>
+            <option>Online</option>
+            <option>Hybrid</option>
+          </select>
+        </label>
+        <label>Location
+          <input name="location" required />
+        </label>
+        <label>Cost (USD)
+          <input name="cost" type="number" min="0" step="1" />
+        </label>
+        <label class="check-line">
+          <input name="allowDiscounts" type="checkbox" />
+          Allow discount-based registration requests
+        </label>
+        <label>Discount Spots
+          <input name="discountSpots" type="number" min="0" step="1" />
+        </label>
+        <label class="check-line">
+          <input name="allowCompensation" type="checkbox" />
+          Allow compensated registration (volunteering/carpooling)
+        </label>
+        <label>Compensation Spots
+          <input name="compensationSpots" type="number" min="0" step="1" />
+        </label>
+        <label>Minimum Required
+          <input name="minRequired" type="number" min="3" required />
+        </label>
+        <label>Maximum Seats
+          <input name="maxSeats" type="number" min="3" required />
+        </label>
+        <label class="full">Compensation Examples (comma-separated)
+          <input name="compensationExamples" />
+        </label>
+        <label class="full">Registration Notes
+          <textarea name="registrationNotes" maxlength="240" placeholder="Optional policy details for discounts or compensated registration."></textarea>
+        </label>
+        <label class="full">Class Description
+          <textarea name="description" required maxlength="400"></textarea>
+        </label>
+        <label class="full">Tags (comma-separated)
+          <input name="tags" />
+        </label>
+        <div class="form-actions">
+          <button id="class-submit" type="submit">Publish Class</button>
+          <button id="class-cancel" class="ghost" type="button" hidden>Cancel Edit</button>
+        </div>
+      </form>
+    </section>
+
+    <aside class="side-column">
+      <section class="panel">
+        <h2>Profile Settings</h2>
+        <form id="profile-form" class="grid-form auth-form">
+          <label>Display Name
+            <input id="profile-name" name="username" required maxlength="40" />
+          </label>
+          <label>Current Password
+            <input id="profile-current-password" name="currentPassword" type="password" placeholder="Required to change password" />
+          </label>
+          <label>New Password
+            <input id="profile-new-password" name="newPassword" type="password" minlength="6" placeholder="Leave blank to keep current password" />
+          </label>
+          <button type="submit">Save Profile</button>
+        </form>
+        <p id="profile-msg" class="form-msg" aria-live="polite"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Manage Classes I Created</h2>
+        <ul id="my-classes-list" class="manage-list"></ul>
+        <p id="my-classes-empty" class="empty" hidden>You have not posted any classes yet.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Feedback Inbox</h2>
+        <p class="form-msg">Messages from participants who completed your classes.</p>
+        <ul id="feedback-inbox-list" class="manage-list"></ul>
+        <p id="feedback-inbox-empty" class="empty" hidden>No feedback messages yet.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Children's Scheduled Classes</h2>
+        <form id="child-schedule-form" class="grid-form auth-form">
+          <label>Child Name
+            <input name="childName" required />
+          </label>
+          <label>Class
+            <select id="child-class-select" name="classId" required>
+              <option value="">Choose a class</option>
+            </select>
+          </label>
+          <label>Day / Time
+            <input name="dayTime" required />
+          </label>
+          <label>Notes (Optional)
+            <input name="notes" />
+          </label>
+          <button type="submit">Add to Schedule</button>
+        </form>
+        <ul id="child-schedule-list" class="manage-list"></ul>
+        <p id="child-schedule-empty" class="empty" hidden>No scheduled classes added yet.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Class Reviews</h2>
+        <p class="form-msg">Mark a scheduled class complete, then submit a review.</p>
+        <form id="review-form" class="grid-form auth-form">
+          <label>Completed Class
+            <select id="review-class-select" name="classId" required>
+              <option value="">Choose a completed class</option>
+            </select>
+          </label>
+          <label>Rating
+            <select name="rating" required>
+              <option value="">Choose rating</option>
+              <option value="5">5 - Excellent</option>
+              <option value="4">4 - Good</option>
+              <option value="3">3 - Solid</option>
+              <option value="2">2 - Needs Work</option>
+              <option value="1">1 - Poor</option>
+            </select>
+          </label>
+          <label>Review
+            <textarea name="comment" maxlength="300" required placeholder="Share what worked well and what could improve."></textarea>
+          </label>
+          <div class="form-actions">
+            <button id="review-submit" type="submit">Submit Review</button>
+            <button id="review-cancel" class="ghost" type="button" hidden>Cancel Edit</button>
+          </div>
+        </form>
+        <p id="review-msg" class="form-msg" aria-live="polite"></p>
+        <ul id="my-reviews-list" class="manage-list"></ul>
+        <p id="my-reviews-empty" class="empty" hidden>You have not posted any reviews yet.</p>
+      </section>
+    </aside>
+  </main>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
