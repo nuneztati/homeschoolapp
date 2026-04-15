@@ -1,0 +1,14 @@
+{
+  "name": "homeschool-hub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Homeschool Hub community classes app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "migrate:neon": "node scripts/migrate-json-to-neon.js"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.2"
+  }
+}

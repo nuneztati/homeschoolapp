@@ -2,6 +2,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { neon } = require("@neondatabase/serverless");
 
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
@@ -11,6 +12,9 @@ const CLASSES_PATH = path.join(DATA_DIR, "classes.json");
 const SUPPORT_REQUESTS_PATH = path.join(DATA_DIR, "support_requests.json");
 const COOKIE_NAME = "homeschool_sid";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const DATABASE_URL = process.env.DATABASE_URL;
+const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
+let databaseReady = false;
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -79,7 +83,9 @@ const seedClasses = [
   }
 ];
 
-ensureStorage();
+if (!sql) {
+  ensureStorage();
+}
 
 function ensureStorage() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -119,16 +125,117 @@ function writeArray(filePath, items) {
   fs.writeFileSync(filePath, JSON.stringify(items, null, 2), "utf8");
 }
 
-function getUsers() {
+async function ensureDatabase() {
+  if (!sql || databaseReady) return;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS homeschool_users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      data JSONB NOT NULL
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS homeschool_classes (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      created_at BIGINT NOT NULL
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS homeschool_support_requests (
+      id TEXT PRIMARY KEY,
+      class_id TEXT,
+      to_owner_id TEXT,
+      requester_id TEXT,
+      data JSONB NOT NULL,
+      created_at BIGINT NOT NULL
+    )
+  `;
+
+  const [{ count }] = await sql`SELECT COUNT(*)::int AS count FROM homeschool_classes`;
+  if (count === 0) {
+    for (const classItem of seedClasses) {
+      await saveClassRecord(classItem);
+    }
+  }
+
+  databaseReady = true;
+}
+
+async function saveClassRecord(classItem) {
+  await sql`
+    INSERT INTO homeschool_classes (id, data, created_at)
+    VALUES (${classItem.id}, ${JSON.stringify(classItem)}::jsonb, ${Number(classItem.createdAt || Date.now())})
+    ON CONFLICT (id) DO UPDATE SET
+      data = EXCLUDED.data,
+      created_at = EXCLUDED.created_at
+  `;
+}
+
+async function saveSupportRequestRecord(entry) {
+  await sql`
+    INSERT INTO homeschool_support_requests (id, class_id, to_owner_id, requester_id, data, created_at)
+    VALUES (
+      ${entry.id},
+      ${entry.classId || null},
+      ${entry.toOwnerId || null},
+      ${entry.requesterId || null},
+      ${JSON.stringify(entry)}::jsonb,
+      ${Number(entry.createdAt || Date.now())}
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      class_id = EXCLUDED.class_id,
+      to_owner_id = EXCLUDED.to_owner_id,
+      requester_id = EXCLUDED.requester_id,
+      data = EXCLUDED.data,
+      created_at = EXCLUDED.created_at
+  `;
+}
+
+async function getUsers() {
+  if (sql) {
+    await ensureDatabase();
+    const rows = await sql`SELECT data FROM homeschool_users`;
+    return rows.map((row) => row.data);
+  }
   return readArray(USERS_PATH);
 }
 
-function saveUsers(users) {
+async function saveUsers(users) {
+  if (sql) {
+    await ensureDatabase();
+    const ids = users.map((user) => user.id);
+    if (ids.length) {
+      await sql`DELETE FROM homeschool_users WHERE NOT (id = ANY(${ids}::text[]))`;
+    } else {
+      await sql`DELETE FROM homeschool_users`;
+    }
+    for (const user of users) {
+      await sql`
+        INSERT INTO homeschool_users (id, email, data)
+        VALUES (${user.id}, ${user.email}, ${JSON.stringify(user)}::jsonb)
+        ON CONFLICT (id) DO UPDATE SET
+          email = EXCLUDED.email,
+          data = EXCLUDED.data
+      `;
+    }
+    return;
+  }
   writeArray(USERS_PATH, users);
 }
 
-function getClasses() {
-  return readArray(CLASSES_PATH).map((item) => ({
+async function getClasses() {
+  let classes;
+  if (sql) {
+    await ensureDatabase();
+    const rows = await sql`SELECT data FROM homeschool_classes ORDER BY created_at DESC`;
+    classes = rows.map((row) => row.data);
+  } else {
+    classes = readArray(CLASSES_PATH);
+  }
+
+  return classes.map((item) => ({
     ...item,
     minRequired: Math.max(3, Number(item.minRequired || 3)),
     maxSeats: Math.max(3, Number(item.maxSeats || 3)),
@@ -146,12 +253,34 @@ function getClasses() {
   }));
 }
 
-function saveClasses(classes) {
+async function saveClasses(classes) {
+  if (sql) {
+    await ensureDatabase();
+    const ids = classes.map((item) => item.id);
+    if (ids.length) {
+      await sql`DELETE FROM homeschool_classes WHERE NOT (id = ANY(${ids}::text[]))`;
+    } else {
+      await sql`DELETE FROM homeschool_classes`;
+    }
+    for (const classItem of classes) {
+      await saveClassRecord(classItem);
+    }
+    return;
+  }
   writeArray(CLASSES_PATH, classes);
 }
 
-function getSupportRequests() {
-  return readArray(SUPPORT_REQUESTS_PATH).map((entry) => ({
+async function getSupportRequests() {
+  let entries;
+  if (sql) {
+    await ensureDatabase();
+    const rows = await sql`SELECT data FROM homeschool_support_requests ORDER BY created_at DESC`;
+    entries = rows.map((row) => row.data);
+  } else {
+    entries = readArray(SUPPORT_REQUESTS_PATH);
+  }
+
+  return entries.map((entry) => ({
     ...entry,
     type: String(entry.type || "support"),
     status: String(entry.status || "pending"),
@@ -159,7 +288,20 @@ function getSupportRequests() {
   }));
 }
 
-function saveSupportRequests(entries) {
+async function saveSupportRequests(entries) {
+  if (sql) {
+    await ensureDatabase();
+    const ids = entries.map((entry) => entry.id);
+    if (ids.length) {
+      await sql`DELETE FROM homeschool_support_requests WHERE NOT (id = ANY(${ids}::text[]))`;
+    } else {
+      await sql`DELETE FROM homeschool_support_requests`;
+    }
+    for (const entry of entries) {
+      await saveSupportRequestRecord(entry);
+    }
+    return;
+  }
   writeArray(SUPPORT_REQUESTS_PATH, entries);
 }
 
@@ -174,7 +316,7 @@ function parseCookies(req) {
   }, {});
 }
 
-function getSessionUser(req) {
+async function getSessionUser(req) {
   const cookies = parseCookies(req);
   const token = cookies[COOKIE_NAME];
   if (!token) return null;
@@ -185,15 +327,15 @@ function getSessionUser(req) {
     return null;
   }
 
-  const users = getUsers();
+  const users = await getUsers();
   const user = users.find((u) => u.id === session.userId);
   if (!user) return null;
 
   return { id: user.id, username: user.username, email: user.email, token };
 }
 
-function requireSession(req, res) {
-  const sessionUser = getSessionUser(req);
+async function requireSession(req, res) {
+  const sessionUser = await getSessionUser(req);
   if (!sessionUser) {
     jsonResponse(res, 401, { error: "You must be logged in." });
     return null;
@@ -327,7 +469,7 @@ async function handleApi(req, res) {
   const pathname = requestUrl.pathname;
 
   if (req.method === "GET" && pathname === "/api/session") {
-    const user = getSessionUser(req);
+    const user = await getSessionUser(req);
     if (!user) {
       jsonResponse(res, 200, { authenticated: false });
       return true;
@@ -337,14 +479,14 @@ async function handleApi(req, res) {
   }
 
   if (req.method === "GET" && pathname === "/api/classes") {
-    const classes = getClasses().sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+    const classes = (await getClasses()).sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
     jsonResponse(res, 200, { classes });
     return true;
   }
 
   if (req.method === "POST" && pathname === "/api/classes") {
     try {
-      const sessionUser = requireSession(req, res);
+      const sessionUser = await requireSession(req, res);
       if (!sessionUser) return true;
       const body = await readJsonBody(req);
       const parsed = sanitizeClassInput(body);
@@ -357,7 +499,7 @@ async function handleApi(req, res) {
         return true;
       }
 
-      const classes = getClasses();
+      const classes = await getClasses();
       const item = {
         id: crypto.randomUUID(),
         ...parsed,
@@ -367,7 +509,7 @@ async function handleApi(req, res) {
         createdAt: Date.now()
       };
       classes.unshift(item);
-      saveClasses(classes);
+      await saveClasses(classes);
       jsonResponse(res, 201, { classItem: item });
       return true;
     } catch (err) {
@@ -379,11 +521,11 @@ async function handleApi(req, res) {
   const classMatch = pathname.match(/^\/api\/classes\/([^/]+)$/);
   if (classMatch && req.method === "PATCH") {
     try {
-      const sessionUser = requireSession(req, res);
+      const sessionUser = await requireSession(req, res);
       if (!sessionUser) return true;
 
       const classId = decodeURIComponent(classMatch[1]);
-      const classes = getClasses();
+      const classes = await getClasses();
       const index = classes.findIndex((item) => item.id === classId);
       if (index < 0) {
         jsonResponse(res, 404, { error: "Class not found." });
@@ -410,7 +552,7 @@ async function handleApi(req, res) {
         updatedAt: Date.now()
       };
       classes[index] = updated;
-      saveClasses(classes);
+      await saveClasses(classes);
       jsonResponse(res, 200, { classItem: updated });
       return true;
     } catch (err) {
@@ -420,11 +562,11 @@ async function handleApi(req, res) {
   }
 
   if (classMatch && req.method === "DELETE") {
-    const sessionUser = requireSession(req, res);
+    const sessionUser = await requireSession(req, res);
     if (!sessionUser) return true;
     const classId = decodeURIComponent(classMatch[1]);
 
-    const classes = getClasses();
+    const classes = await getClasses();
     const target = classes.find((item) => item.id === classId);
     if (!target) {
       jsonResponse(res, 404, { error: "Class not found." });
@@ -435,9 +577,9 @@ async function handleApi(req, res) {
       return true;
     }
 
-    saveClasses(classes.filter((item) => item.id !== classId));
-    const support = getSupportRequests().filter((entry) => entry.classId !== classId);
-    saveSupportRequests(support);
+    await saveClasses(classes.filter((item) => item.id !== classId));
+    const support = (await getSupportRequests()).filter((entry) => entry.classId !== classId);
+    await saveSupportRequests(support);
     jsonResponse(res, 200, { ok: true });
     return true;
   }
@@ -452,7 +594,7 @@ async function handleApi(req, res) {
         return true;
       }
       const classId = decodeURIComponent(enrollmentMatch[1]);
-      const classes = getClasses();
+      const classes = await getClasses();
       const index = classes.findIndex((item) => item.id === classId);
       if (index < 0) {
         jsonResponse(res, 404, { error: "Class not found." });
@@ -466,7 +608,7 @@ async function handleApi(req, res) {
       target.currentEnrollment = next;
       target.updatedAt = Date.now();
       classes[index] = target;
-      saveClasses(classes);
+      await saveClasses(classes);
       jsonResponse(res, 200, { classItem: target });
       return true;
     } catch (err) {
@@ -476,7 +618,7 @@ async function handleApi(req, res) {
   }
 
   if (req.method === "GET" && pathname === "/api/support-requests/summary") {
-    const support = getSupportRequests();
+    const support = await getSupportRequests();
     const byClass = new Map();
     support.forEach((entry) => {
       const bucket = byClass.get(entry.classId) || { classId: entry.classId, total: 0, pending: 0, accepted: 0, declined: 0 };
@@ -491,10 +633,10 @@ async function handleApi(req, res) {
   }
 
   if (req.method === "GET" && pathname === "/api/support-requests") {
-    const sessionUser = requireSession(req, res);
+    const sessionUser = await requireSession(req, res);
     if (!sessionUser) return true;
     const scope = String(requestUrl.searchParams.get("scope") || "mine");
-    const support = getSupportRequests();
+    const support = await getSupportRequests();
     const entries = scope === "owner"
       ? support.filter((entry) => entry.toOwnerId === sessionUser.id)
       : support.filter((entry) => entry.requesterId === sessionUser.id);
@@ -504,7 +646,7 @@ async function handleApi(req, res) {
 
   if (req.method === "POST" && pathname === "/api/support-requests") {
     try {
-      const sessionUser = requireSession(req, res);
+      const sessionUser = await requireSession(req, res);
       if (!sessionUser) return true;
       const body = await readJsonBody(req);
       const classId = String(body.classId || "");
@@ -523,7 +665,7 @@ async function handleApi(req, res) {
         return true;
       }
 
-      const classes = getClasses();
+      const classes = await getClasses();
       const classItem = classes.find((item) => item.id === classId);
       if (!classItem) {
         jsonResponse(res, 404, { error: "Class not found." });
@@ -542,7 +684,7 @@ async function handleApi(req, res) {
         return true;
       }
 
-      const support = getSupportRequests();
+      const support = await getSupportRequests();
       const entry = {
         id: crypto.randomUUID(),
         classId,
@@ -557,7 +699,7 @@ async function handleApi(req, res) {
         createdAt: Date.now()
       };
       support.unshift(entry);
-      saveSupportRequests(support);
+      await saveSupportRequests(support);
       jsonResponse(res, 201, { entry });
       return true;
     } catch (err) {
@@ -569,10 +711,10 @@ async function handleApi(req, res) {
   const supportDecisionMatch = pathname.match(/^\/api\/support-requests\/([^/]+)\/decision$/);
   if (supportDecisionMatch && req.method === "PATCH") {
     try {
-      const sessionUser = requireSession(req, res);
+      const sessionUser = await requireSession(req, res);
       if (!sessionUser) return true;
       const supportId = decodeURIComponent(supportDecisionMatch[1]);
-      const support = getSupportRequests();
+      const support = await getSupportRequests();
       const index = support.findIndex((entry) => entry.id === supportId);
       if (index < 0) {
         jsonResponse(res, 404, { error: "Support request not found." });
@@ -593,7 +735,7 @@ async function handleApi(req, res) {
       target.decisionNote = String(body.decisionNote || "").trim().slice(0, 240);
       target.respondedAt = Date.now();
       support[index] = target;
-      saveSupportRequests(support);
+      await saveSupportRequests(support);
       jsonResponse(res, 200, { entry: target });
       return true;
     } catch (err) {
@@ -604,10 +746,10 @@ async function handleApi(req, res) {
 
   const supportDeleteMatch = pathname.match(/^\/api\/support-requests\/([^/]+)$/);
   if (supportDeleteMatch && req.method === "DELETE") {
-    const sessionUser = requireSession(req, res);
+    const sessionUser = await requireSession(req, res);
     if (!sessionUser) return true;
     const supportId = decodeURIComponent(supportDeleteMatch[1]);
-    const support = getSupportRequests();
+    const support = await getSupportRequests();
     const target = support.find((entry) => entry.id === supportId);
     if (!target) {
       jsonResponse(res, 404, { error: "Support request not found." });
@@ -617,7 +759,7 @@ async function handleApi(req, res) {
       jsonResponse(res, 403, { error: "Only the class owner can delete this request." });
       return true;
     }
-    saveSupportRequests(support.filter((entry) => entry.id !== supportId));
+    await saveSupportRequests(support.filter((entry) => entry.id !== supportId));
     jsonResponse(res, 200, { ok: true });
     return true;
   }
@@ -634,7 +776,7 @@ async function handleApi(req, res) {
         return true;
       }
 
-      const users = getUsers();
+      const users = await getUsers();
       if (users.some((u) => u.email === email)) {
         jsonResponse(res, 409, { error: "That email is already registered." });
         return true;
@@ -649,7 +791,7 @@ async function handleApi(req, res) {
       };
 
       users.push(user);
-      saveUsers(users);
+      await saveUsers(users);
       createSession(res, user.id);
       jsonResponse(res, 201, { user: { id: user.id, username: user.username, email: user.email } });
       return true;
@@ -665,7 +807,7 @@ async function handleApi(req, res) {
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "");
 
-      const users = getUsers();
+      const users = await getUsers();
       const user = users.find((u) => u.email === email);
       if (!user || !verifyPassword(password, user.passwordHash)) {
         jsonResponse(res, 401, { error: "Incorrect email or password." });
@@ -683,7 +825,7 @@ async function handleApi(req, res) {
 
   if (req.method === "POST" && pathname === "/api/profile") {
     try {
-      const sessionUser = getSessionUser(req);
+      const sessionUser = await getSessionUser(req);
       if (!sessionUser) {
         jsonResponse(res, 401, { error: "You must be logged in." });
         return true;
@@ -694,7 +836,7 @@ async function handleApi(req, res) {
       const currentPassword = String(body.currentPassword || "");
       const newPassword = String(body.newPassword || "");
 
-      const users = getUsers();
+      const users = await getUsers();
       const targetIndex = users.findIndex((u) => u.id === sessionUser.id);
       if (targetIndex < 0) {
         jsonResponse(res, 404, { error: "User not found." });
@@ -734,7 +876,7 @@ async function handleApi(req, res) {
       }
 
       users[targetIndex] = targetUser;
-      saveUsers(users);
+      await saveUsers(users);
       jsonResponse(res, 200, { user: { id: targetUser.id, username: targetUser.username, email: targetUser.email } });
       return true;
     } catch (err) {
@@ -778,5 +920,9 @@ if (require.main === module) {
 module.exports = {
   handleApi,
   jsonResponse,
-  createServer
+  createServer,
+  ensureDatabase,
+  saveUsers,
+  saveClasses,
+  saveSupportRequests
 };
